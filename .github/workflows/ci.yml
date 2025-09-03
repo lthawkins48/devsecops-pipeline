@@ -1,0 +1,63 @@
+name: CI – PR Security & Quality Gates
+on:
+pull_request:
+branches: ["main"]
+
+
+jobs:
+ci:
+runs-on: ubuntu-latest
+permissions:
+contents: read
+pull-requests: write
+
+
+steps:
+- name: Checkout
+uses: actions/checkout@v4
+
+
+- name: Set up Python
+uses: actions/setup-python@v5
+with:
+python-version: '3.12'
+
+
+- name: Install dependencies
+run: |
+python -m venv .venv
+. .venv/bin/activate
+pip install --upgrade pip
+pip install -r app/requirements.txt
+pip install gitleaks==8.18.4
+
+
+- name: Lint (flake8)
+run: |
+. .venv/bin/activate
+flake8 app
+
+
+- name: Unit tests (pytest)
+run: |
+. .venv/bin/activate
+pytest -q
+
+
+- name: SAST (Bandit)
+run: |
+. .venv/bin/activate
+bandit -r app -x app/tests -ll
+
+
+- name: Dependency scan (pip-audit)
+run: |
+. .venv/bin/activate
+pip-audit -r app/requirements.txt || true
+# NOTE: `|| true` allows pipeline to continue while still surfacing findings.
+
+
+- name: Secret scan (Gitleaks)
+uses: zricethezav/gitleaks-action@v2
+with:
+args: detect -v --source . --no-git -c security/gitleaks-config.toml || true

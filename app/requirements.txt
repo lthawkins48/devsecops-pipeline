@@ -1,0 +1,7 @@
+fastapi==0.115.0
+uvicorn==0.30.6
+pytest==8.3.2
+requests==2.32.3
+bandit==1.7.9
+pip-audit==2.7.3
+flake8==7.1.1

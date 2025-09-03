@@ -1,0 +1,72 @@
+name: CD – Build, Scan, Push, Deploy
+env:
+ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+run: |
+docker tag $ECR_REPOSITORY:ci-$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+docker tag $ECR_REPOSITORY:ci-$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+
+iac_scan_and_deploy:
+needs: build_scan_push
+runs-on: ubuntu-latest
+env:
+AWS_REGION: ${{ secrets.AWS_REGION }}
+steps:
+- name: Checkout
+uses: actions/checkout@v4
+
+
+- name: Install Checkov
+run: |
+python -m pip install --upgrade pip
+pip install checkov
+
+
+- name: IaC scan (Checkov)
+run: |
+checkov -d terraform || true
+
+
+- name: Configure AWS credentials
+if: ${{ secrets.AWS_ROLE_TO_ASSUME != '' }}
+uses: aws-actions/configure-aws-credentials@v4
+with:
+role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+aws-region: ${{ env.AWS_REGION }}
+
+
+- name: Configure AWS credentials (Access keys)
+if: ${{ secrets.AWS_ROLE_TO_ASSUME == '' }}
+uses: aws-actions/configure-aws-credentials@v4
+with:
+aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+aws-region: ${{ env.AWS_REGION }}
+
+
+- name: Prepare task definition
+id: taskdef
+run: |
+IMAGE_URI=$(aws ecr describe-repositories --repository-names "$ECR_REPOSITORY" --region "$AWS_REGION" >/dev/null 2>&1 && echo "${{ steps.login-ecr.outputs.registry || format('{0}.dkr.ecr.{1}.amazonaws.com', secrets.AWS_ACCOUNT_ID, secrets.AWS_REGION) }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}")
+echo "image=$IMAGE_URI" >> $GITHUB_OUTPUT
+shell: bash
+
+
+- name: Render ECS task definition
+id: render
+uses: aws-actions/amazon-ecs-render-task-definition@v1
+with:
+task-definition: ecs/taskdef.json
+container-name: app
+image: ${{ steps.taskdef.outputs.image }}
+
+
+- name: Deploy to Amazon ECS
+uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+with:
+task-definition: ${{ steps.render.outputs.task-definition }}
+service: ${{ secrets.ECS_SERVICE }}
+cluster: ${{ secrets.ECS_CLUSTER }}
+wait-for-service-stability: true

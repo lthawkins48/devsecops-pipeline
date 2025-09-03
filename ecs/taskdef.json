@@ -1,0 +1,30 @@
+{
+"family": "devsecops-demo",
+"networkMode": "awsvpc",
+"requiresCompatibilities": ["FARGATE"],
+"cpu": "256",
+"memory": "512",
+"executionRoleArn": "arn:aws:iam::123456789012:role/ecsTaskExecutionRole",
+"taskRoleArn": "arn:aws:iam::123456789012:role/ecsTaskRole",
+"containerDefinitions": [
+{
+"name": "app",
+"image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/devsecops-demo:latest",
+"portMappings": [
+{ "containerPort": 8000, "hostPort": 8000, "protocol": "tcp" }
+],
+"essential": true,
+"environment": [
+{ "name": "DEMO_API_KEY", "value": "use-aws-secrets-manager-in-prod" }
+],
+"logConfiguration": {
+"logDriver": "awslogs",
+"options": {
+"awslogs-group": "/ecs/devsecops-demo",
+"awslogs-region": "us-east-1",
+"awslogs-stream-prefix": "ecs"
+}
+}
+}
+]
+}
